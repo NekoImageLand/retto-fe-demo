@@ -1,8 +1,13 @@
 <template>
   <div class="min-h-screen bg-gray-100 p-4 flex flex-col items-center">
-    <div class="bg-white shadow-md rounded-lg p-6 mb-6 w-full max-w-2xl">
-      <h1 class="text-2xl font-bold mb-2">retto-fe-demo</h1>
+    <div class="bg-white shadow-md rounded-lg p-6 mb-6 w-full max-w-2xl relative">
+      <h1 class="text-2xl font-bold mb-2">retto-demo</h1>
       <p class="text-gray-600">High-performance inference of the PaddleOCR model on desktop and WebAssembly🦀</p>
+      <div class="absolute top-4 right-4">
+        <a href="https://github.com/NekoImageLand/retto" target="_blank" aria-label="GitHub">
+          <img src="@/assets/github-mark.svg" alt="GitHub" class="h-6 w-6" />
+        </a>
+      </div>
     </div>
     <div class="bg-white shadow-md rounded-lg p-6 mb-4 w-full max-w-2xl">
       <label class="block text-lg font-medium mb-2" for="model">Select OCR Model</label>
@@ -38,6 +43,9 @@
         :results="recResults"
         @reset="resetAll"
     />
+    <footer class="mt-0 text-center text-gray-500">
+      <p>Built on WASM, all computations are performed locally</p>
+    </footer>
   </div>
 </template>
 

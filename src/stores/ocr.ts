@@ -7,7 +7,7 @@ export const useOcrStore = defineStore("ocr", {
     results: string[];
     statusText: string;
     progress: number;
-    isProcessing: boolean
+    isProcessing: boolean;
   } => ({
     objectUrls: [],
     currentModel: "",
