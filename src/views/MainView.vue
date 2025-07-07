@@ -32,7 +32,10 @@
         <span v-if="ocrStore.state === RettoState.Processing"> ({{ ocrStore.progress }}%)</span>
       </p>
       <div v-if="ocrStore.state === RettoState.Processing" class="w-full bg-gray-200 rounded-full h-2 mt-2">
-        <el-progress :percentage="ocrStore.progress"/>
+        <el-progress
+            :percentage="ocrStore.progress"
+            :show-text="false"
+        />
       </div>
     </div>
     <UploadArea v-if="!showResult" @file-ready="rettoOCR"/>
@@ -111,6 +114,12 @@ const onIdle = (text?: string) => {
   ocrStore.progress = 0;
 }
 
+const onStartProcess = (text: string) => {
+  ocrStore.statusText = text;
+  ocrStore.state = RettoState.Processing;
+  ocrStore.progress = 0;
+}
+
 const onError = (err: Error) => {
   console.error('Retto error:', err);
   ocrStore.statusText = 'Error: ' + err.message;
@@ -133,9 +142,7 @@ let rettoInstance: Retto | null = null;
 
 const initRetto = async () => {
   const m = models.value.find(m => m.value === currentModel.value)!;
-  ocrStore.statusText = 'Downloading model files';
-  ocrStore.progress = 0;
-  ocrStore.state = RettoState.Processing;
+  onStartProcess('Downloading model files');
   const filePaths = [m.det, m.rec, m.cls, m.dict];
   const rawData = await Promise.all(
       filePaths.map(async path => {
@@ -175,8 +182,7 @@ const initRetto = async () => {
       })())
   );
   // Load wasm
-  ocrStore.statusText = 'Loading WASM';
-  ocrStore.state = RettoState.Processing;
+  onStartProcess('Loading WASM');
   rettoInstance = await Retto.load(ratio => {
     ocrStore.progress = Math.round(ratio * 100);
   });
@@ -206,12 +212,10 @@ const showResult = ref(false);
 
 const rettoOCR = async (bitmap: ImageBitmap) => {
   try {
+    onStartProcess("Det")
     const start = performance.now();
     currentBitmap.value = bitmap;
     const buf = await bitmapToBuffer(bitmap);
-    ocrStore.statusText = 'Det';
-    ocrStore.progress = 0;
-    ocrStore.state = RettoState.Processing;
     for await (const stage of rettoInstance!.recognize(buf)) {
       ocrStore.statusText = stage.stage.charAt(0).toUpperCase() + stage.stage.slice(1);
       const map: Record<string, number> = { det: 33, cls: 66, rec: 100 };
