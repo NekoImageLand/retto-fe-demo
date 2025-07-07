@@ -3,7 +3,7 @@
       :class="[
       'relative bg-white border-2 border-dashed rounded-lg w-full max-w-2xl h-64 flex items-center justify-center mb-6 transition-colors',
       { 'bg-blue-50': isOnDrag },
-      { 'opacity-50 pointer-events-none filter grayscale': ocrStore.isProcessing }
+      { 'opacity-50 pointer-events-none filter grayscale': ocrStore.state !== RettoState.Idle }
     ]"
       @dragover.prevent="handleDragOver"
       @dragleave.prevent="handleDragLeave"
@@ -22,7 +22,7 @@
       <p class="mb-4">Drag &amp; drop images here, or</p>
       <button
           class="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded"
-          :disabled="ocrStore.isProcessing"
+          :disabled="ocrStore.state !== RettoState.Idle"
           @click="triggerFileInput"
       >
         Upload Images
@@ -32,7 +32,7 @@
       </p>
     </div>
     <div
-v-if="isOnDrag && !ocrStore.isProcessing"
+v-if="isOnDrag && ocrStore.state === RettoState.Idle"
          class="absolute inset-0 flex items-center justify-center pointer-events-none">
       <span class="text-blue-500 font-bold">Release to start OCR</span>
     </div>
@@ -41,7 +41,7 @@ v-if="isOnDrag && !ocrStore.isProcessing"
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useOcrStore } from '@/stores/ocr.ts';
+import { RettoState, useOcrStore } from '@/stores/ocr.ts';
 
 const ocrStore = useOcrStore();
 const emit = defineEmits<{
@@ -61,7 +61,7 @@ const onFilesSelected = (event: Event) => {
 };
 
 const handlePaste = (event: ClipboardEvent) => {
-  if (ocrStore.isProcessing) return;
+  if (ocrStore.state !== RettoState.Idle) return;
   const items = event.clipboardData?.items;
   if (!items) return;
   Array.from(items).forEach(item => {
@@ -73,17 +73,17 @@ const handlePaste = (event: ClipboardEvent) => {
 };
 
 const handleDragOver = () => {
-  if (ocrStore.isProcessing) return;
+  if (ocrStore.state !== RettoState.Idle) return;
   isOnDrag.value = true;
 };
 
 const handleDragLeave = () => {
-  if (ocrStore.isProcessing) return;
+  if (ocrStore.state !== RettoState.Idle) return;
   isOnDrag.value = false;
 };
 
 const handleDrop = (event: DragEvent) => {
-  if (ocrStore.isProcessing) return;
+  if (ocrStore.state !== RettoState.Idle) return;
   isOnDrag.value = false;
   const files = event.dataTransfer?.files;
   if (!files) return;

@@ -4,8 +4,8 @@
       <h1 class="text-2xl font-bold mb-2">retto-demo</h1>
       <p class="text-gray-600">High-performance inference of the PaddleOCR model on desktop and WebAssembly🦀</p>
       <div class="absolute top-4 right-4">
-        <a href="https://github.com/NekoImageLand/retto" target="_blank" aria-label="GitHub">
-          <img src="@/assets/github-mark.svg" alt="GitHub" class="h-6 w-6" />
+        <a aria-label="GitHub" href="https://github.com/NekoImageLand/retto" target="_blank">
+          <img alt="GitHub" class="h-6 w-6" src="@/assets/github-mark.svg"/>
         </a>
       </div>
     </div>
@@ -29,10 +29,10 @@
     <div class="bg-white shadow-md rounded-lg p-4 mb-6 w-full max-w-2xl">
       <p class="text-gray-800">
         Status: <span :class="statusClass">{{ ocrStore.statusText }}</span>
-        <span v-if="ocrStore.isProcessing"> ({{ ocrStore.progress }}%)</span>
+        <span v-if="ocrStore.state === RettoState.Processing"> ({{ ocrStore.progress }}%)</span>
       </p>
-      <div v-if="ocrStore.isProcessing" class="w-full bg-gray-200 rounded-full h-2 mt-2">
-        <el-progress :percentage="ocrStore.progress" text-inside/>
+      <div v-if="ocrStore.state === RettoState.Processing" class="w-full bg-gray-200 rounded-full h-2 mt-2">
+        <el-progress :percentage="ocrStore.progress"/>
       </div>
     </div>
     <UploadArea v-if="!showResult" @file-ready="rettoOCR"/>
@@ -53,7 +53,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import axios from 'axios';
 import * as hub from '@huggingface/hub';
-import { useOcrStore } from '@/stores/ocr';
+import { RettoState, useOcrStore } from '@/stores/ocr';
 import UploadArea from '@/components/UploadArea.vue';
 import OcrDisplay from '@/components/OcrDisplay.vue';
 import { type PointBox, type RecProcessorSingleResult, Retto } from '@nekoimageland/retto-wasm';
@@ -95,11 +95,39 @@ watch(currentModel, (v) => {
   localStorage.setItem('currentModel', v);
 });
 
-const statusClass = computed(() =>
-    !ocrStore.isProcessing ? 'text-green-600' : 'text-blue-600'
-);
+const statusClassMap: Record<RettoState, string> = {
+  [RettoState.Idle]: 'text-green-600',
+  [RettoState.Processing]: 'text-blue-600',
+  [RettoState.Error]: 'text-red-600',
+};
+const statusClass = computed(() => statusClassMap[ocrStore.state]);
+
 const { progress } = storeToRefs(ocrStore);
-watch(progress, (s, d) => console.debug(`Retto process: ${s}% => ${d}%`));
+watch(progress, (s, d) => console.debug(`Retto process: ${d}% => ${s}%`));
+
+const onIdle = (text?: string) => {
+  ocrStore.statusText = text ?? 'Idle';
+  ocrStore.state = RettoState.Idle;
+  ocrStore.progress = 0;
+}
+
+const onError = (err: Error) => {
+  console.error('Retto error:', err);
+  ocrStore.statusText = 'Error: ' + err.message;
+  ocrStore.state = RettoState.Error;
+  ocrStore.progress = 0;
+}
+
+const resetAll = () => {
+  currentBitmap.value = null;
+  detBoxes.value = [];
+  recResults.value = [];
+  showResult.value = false;
+  ocrStore.clear();
+  ocrStore.statusText = 'Idle';
+  ocrStore.progress = 0;
+  ocrStore.state = RettoState.Idle;
+}
 
 let rettoInstance: Retto | null = null;
 
@@ -107,7 +135,7 @@ const initRetto = async () => {
   const m = models.value.find(m => m.value === currentModel.value)!;
   ocrStore.statusText = 'Downloading model files';
   ocrStore.progress = 0;
-  ocrStore.isProcessing = true;
+  ocrStore.state = RettoState.Processing;
   const filePaths = [m.det, m.rec, m.cls, m.dict];
   const rawData = await Promise.all(
       filePaths.map(async path => {
@@ -146,10 +174,11 @@ const initRetto = async () => {
         return res.data;
       })())
   );
+  // Load wasm
+  ocrStore.statusText = 'Loading WASM';
+  ocrStore.state = RettoState.Processing;
   rettoInstance = await Retto.load(ratio => {
-    ocrStore.statusText = 'Loading WASM';
     ocrStore.progress = Math.round(ratio * 100);
-    ocrStore.isProcessing = true;
   });
   await rettoInstance.init({
     det_model: buffers[0],
@@ -157,9 +186,7 @@ const initRetto = async () => {
     cls_model: buffers[2],
     rec_dict: buffers[3],
   });
-  ocrStore.statusText = 'Idle';
-  ocrStore.progress = 0;
-  ocrStore.isProcessing = false;
+  onIdle();
 }
 
 const bitmapToBuffer = async (bitmap: ImageBitmap): Promise<ArrayBuffer> => {
@@ -178,47 +205,42 @@ const recResults = ref<RecProcessorSingleResult[]>([]);
 const showResult = ref(false);
 
 const rettoOCR = async (bitmap: ImageBitmap) => {
-  const start = performance.now();
-  currentBitmap.value = bitmap;
-  const buf = await bitmapToBuffer(bitmap);
-  ocrStore.statusText = 'Det';
-  ocrStore.progress = 0;
-  ocrStore.isProcessing = true;
-  for await (const stage of rettoInstance!.recognize(buf)) {
-    ocrStore.statusText = stage.stage.charAt(0).toUpperCase() + stage.stage.slice(1);
-    const map: Record<string, number> = { det: 33, cls: 66, rec: 100 };
-    ocrStore.progress = map[stage.stage];
-    if (stage.stage === 'det') {
-      detBoxes.value = stage.result.map(r => r.boxes);
-      ocrStore.statusText = 'Cls';
-    } else if (stage.stage === 'cls') {
-      ocrStore.statusText = 'Rec';
-    } else if (stage.stage === 'rec') {
-      recResults.value = stage.result;
+  try {
+    const start = performance.now();
+    currentBitmap.value = bitmap;
+    const buf = await bitmapToBuffer(bitmap);
+    ocrStore.statusText = 'Det';
+    ocrStore.progress = 0;
+    ocrStore.state = RettoState.Processing;
+    for await (const stage of rettoInstance!.recognize(buf)) {
+      ocrStore.statusText = stage.stage.charAt(0).toUpperCase() + stage.stage.slice(1);
+      const map: Record<string, number> = { det: 33, cls: 66, rec: 100 };
+      ocrStore.progress = map[stage.stage];
+      if (stage.stage === 'det') {
+        detBoxes.value = stage.result.map(r => r.boxes);
+        ocrStore.statusText = 'Cls';
+      } else if (stage.stage === 'cls') {
+        ocrStore.statusText = 'Rec';
+      } else if (stage.stage === 'rec') {
+        recResults.value = stage.result;
+      }
     }
+    onIdle(`Done in ${((performance.now() - start) / 1000).toFixed(3)}s`);
+    ocrStore.results = recResults.value.map(r => r.text);
+    showResult.value = true;
+  } catch (err) {
+    onError(err as Error);
   }
-  ocrStore.statusText = `Done in ${((performance.now() - start) / 1000).toFixed(3)}s`;
-  ocrStore.progress = 0;
-  ocrStore.results = recResults.value.map(r => r.text);
-  showResult.value = true;
-  ocrStore.isProcessing = false;
 }
 
-const resetAll = () => {
-  currentBitmap.value = null;
-  detBoxes.value = [];
-  recResults.value = [];
-  showResult.value = false;
-  ocrStore.clear();
-  ocrStore.statusText = 'Idle';
-  ocrStore.progress = 0;
-  ocrStore.isProcessing = false;
-}
-
-onMounted(() => {
+onMounted(async () => {
   const saved = localStorage.getItem('currentModel');
   if (saved) currentModel.value = saved;
-  initRetto();
+  try {
+    await initRetto();
+  } catch (err) {
+    onError(err as Error);
+  }
 });
 </script>
 

@@ -24,6 +24,7 @@ export default typescriptEslint.config(
   {
     rules: {
       "object-curly-spacing": ["error", "always"],
+      '@typescript-eslint/no-unused-vars': 'off',
     },
   },
 );

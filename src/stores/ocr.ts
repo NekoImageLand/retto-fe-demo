@@ -1,5 +1,11 @@
 import { defineStore } from "pinia";
 
+export enum RettoState {
+  Idle,
+  Processing,
+  Error
+}
+
 export const useOcrStore = defineStore("ocr", {
   state: (): {
     objectUrls: string[];
@@ -7,14 +13,14 @@ export const useOcrStore = defineStore("ocr", {
     results: string[];
     statusText: string;
     progress: number;
-    isProcessing: boolean;
+    state: RettoState;
   } => ({
     objectUrls: [],
     currentModel: "",
     results: [],
     statusText: "Idle",
     progress: 0,
-    isProcessing: false,
+    state: RettoState.Idle,
   }),
   actions: {
     clear() {
